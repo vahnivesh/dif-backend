@@ -2,6 +2,13 @@ services:
   - type: web
     name: dif-backend
     env: python
+
+    envVars:
+      - key: UPSTASH_URL
+        value: https://relative-killdeer-42066.upstash.io
+      - key: UPSTASH_TOKEN
+        value: Bearer AaRSAAIncDIzMTY3MGRhYzk2ZjE0MWFkYTFiNjRiY2Y0YzU4YWM4N3AyNDIwNjY
+
     buildCommand: pip install -r requirements.txt
     startCommand: python difserver.py
     plan: free
