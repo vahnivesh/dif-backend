@@ -131,7 +131,7 @@
         const public_key = btoa(String.fromCharCode(...publicKeyDer));
 
         // send to server
-        const resp = await fetch("http://localhost:5000/passkey/register", {
+        const resp = await fetch("https://dif-backend.onrender.com/passkey/register", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ username, credential_id, public_key })
@@ -143,7 +143,7 @@
         }
 
         // mark QR session as completed
-        await fetch("http://localhost:5000/qr/complete-setup", {
+        await fetch("https://dif-backend.onrender.com/qr/complete-setup", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ session_id: sessionId })
@@ -179,4 +179,5 @@
     regBtn.addEventListener("click", registerPasskey);
   </script>
 </body>
+
 </html>
