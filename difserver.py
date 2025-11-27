@@ -5,6 +5,7 @@ import json
 import uuid
 import time
 import base64
+import requests
 
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec
@@ -12,41 +13,41 @@ from cryptography.hazmat.primitives.serialization import load_der_public_key
 
 # ----------------- CONFIG -----------------
 
-# Your ngrok domain
 NGROK_URL = "https://dif-backend.onrender.com"
 
-# Where passkeys are stored
-PASSKEY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "passkey.json")
+UPSTASH_URL = os.environ.get("https://relative-killdeer-42066.upstash.io")
+UPSTASH_TOKEN = os.environ.get("AaRSAAIncDIzMTY3MGRhYzk2ZjE0MWFkYTFiNjRiY2Y0YzU4YWM4N3AyNDIwNjY")
 
-# Flask setup
 app = Flask(__name__, static_folder="public")
 CORS(app)
 
 QR_SESSIONS = {}     # session_id -> {username, mode, status, timestamp}
-PASSKEYS = {}        # loaded from file
 
 
-# ----------------- INTERNAL HELPERS -----------------
+# ----------------- UPSTASH HELPERS -----------------
 
-def load_passkeys():
-    global PASSKEYS
-    if not os.path.exists(PASSKEY_FILE):
-        PASSKEYS = {"users": {}}
-        return
-    with open(PASSKEY_FILE, "r") as f:
-        try:
-            PASSKEYS = json.load(f)
-        except:
-            PASSKEYS = {"users": {}}
+def redis_set(key, value):
+    """Store JSON value in Upstash Redis"""
+    r = requests.post(
+        f"{UPSTASH_URL}/set/{key}",
+        headers={"Authorization": UPSTASH_TOKEN},
+        json={"value": json.dumps(value)}
+    )
+    return r.json()
 
-
-def save_passkeys():
-    with open(PASSKEY_FILE, "w") as f:
-        json.dump(PASSKEYS, f, indent=2)
-
-
-load_passkeys()
-print("Loaded passkeys:", PASSKEYS)
+def redis_get(key):
+    """Retrieve JSON value from Upstash Redis"""
+    r = requests.get(
+        f"{UPSTASH_URL}/get/{key}",
+        headers={"Authorization": UPSTASH_TOKEN}
+    )
+    try:
+        data = r.json()
+        if "result" in data and data["result"] is not None:
+            return json.loads(data["result"])
+        return None
+    except:
+        return None
 
 
 # ----------------- PASSKEY REGISTER -----------------
@@ -61,13 +62,12 @@ def passkey_register():
     if not username or not credential_id or not public_key:
         return jsonify({"error": "Missing fields"}), 400
 
-    PASSKEYS["users"][username] = {
+    redis_set(f"passkey:{username}", {
         "credential_id": credential_id,
         "public_key": public_key,
         "counter": 0
-    }
+    })
 
-    save_passkeys()
     print("Registered:", username)
     return jsonify({"success": True})
 
@@ -80,7 +80,7 @@ def passkey_meta():
     if not username:
         return jsonify({"error": "username required"}), 400
 
-    user_info = PASSKEYS["users"].get(username)
+    user_info = redis_get(f"passkey:{username}")
     if not user_info:
         return jsonify({"error": "No registered passkey"}), 404
 
@@ -102,7 +102,8 @@ def passkey_verify():
     client_data = data.get("client_data")
     signature = data.get("signature")
 
-    user_info = PASSKEYS["users"].get(username)
+    user_info = redis_get(f"passkey:{username}")
+
     if not user_info:
         return jsonify({"error": "No registered passkey"}), 404
 
@@ -135,7 +136,7 @@ def passkey_verify():
 def cleanup_sessions():
     now = time.time()
     for sid, sess in list(QR_SESSIONS.items()):
-        if now - sess["timestamp"] > 300:  # 5 min
+        if now - sess["timestamp"] > 300:
             del QR_SESSIONS[sid]
 
 
@@ -159,7 +160,6 @@ def qr_start():
         "timestamp": time.time()
     }
 
-    # ---- New correct URL served by Flask through ngrok ----
     mobile_url = (
         f"{NGROK_URL}/public/phone-auth-generate.html"
         f"?session={session_id}&user={username}"
@@ -192,7 +192,8 @@ def qr_start_login():
 
     username = data.get("username")
 
-    if username not in PASSKEYS["users"]:
+    user_info = redis_get(f"passkey:{username}")
+    if not user_info:
         return jsonify({"error": "User has no passkey"}), 404
 
     session_id = str(uuid.uuid4())
@@ -204,7 +205,6 @@ def qr_start_login():
         "timestamp": time.time()
     }
 
-    # ---- Correct login URL for phone ----
     mobile_url = (
         f"{NGROK_URL}/public/phone-auth-login.html"
         f"?session={session_id}&user={username}"
@@ -254,5 +254,3 @@ def serve_public(filename):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-
-
