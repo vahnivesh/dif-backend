@@ -15,8 +15,17 @@ from cryptography.hazmat.primitives.serialization import load_der_public_key
 
 NGROK_URL = "https://dif-backend.onrender.com"
 
-UPSTASH_URL = os.environ.get("https://relative-killdeer-42066.upstash.io")
-UPSTASH_TOKEN = os.environ.get("AaRSAAIncDIzMTY3MGRhYzk2ZjE0MWFkYTFiNjRiY2Y0YzU4YWM4N3AyNDIwNjY")
+# ----------------- CONFIG -----------------
+
+NGROK_URL = "https://dif-backend.onrender.com"
+
+# Read from environment (Render / render.yaml / dashboard)
+UPSTASH_URL = os.environ.get("UPSTASH_URL")
+UPSTASH_TOKEN = os.environ.get("UPSTASH_TOKEN")
+
+# Optional: sanity check (good for debugging)
+print("DEBUG UPSTASH:", UPSTASH_URL, "TOKEN SET?" , bool(UPSTASH_TOKEN))
+
 
 app = Flask(__name__, static_folder="public")
 CORS(app)
@@ -254,3 +263,4 @@ def serve_public(filename):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
