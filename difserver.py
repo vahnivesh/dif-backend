@@ -11,6 +11,25 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.serialization import load_der_public_key
 
+from google.cloud import firestore
+import json
+import os
+
+# Firestore init
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "/etc/secrets/firebase-key.json"
+db = firestore.Client()
+
+def save_passkey(username, data):
+    doc_ref = db.collection("passkeys").document(username)
+    doc_ref.set(data)
+
+def load_passkey(username):
+    doc = db.collection("passkeys").document(username).get()
+    if doc.exists:
+        return doc.to_dict()
+    return None
+
+
 # ----------------- CONFIG -----------------
 
 NGROK_URL = "https://dif-backend.onrender.com"
@@ -71,11 +90,12 @@ def passkey_register():
     if not username or not credential_id or not public_key:
         return jsonify({"error": "Missing fields"}), 400
 
-    redis_set(f"passkey:{username}", {
-        "credential_id": credential_id,
-        "public_key": public_key,
-        "counter": 0
-    })
+    save_passkey(username, {
+    "credential_id": credential_id,
+    "public_key": public_key,
+    "counter": 0
+})
+
 
     print("Registered:", username)
     return jsonify({"success": True})
@@ -89,7 +109,7 @@ def passkey_meta():
     if not username:
         return jsonify({"error": "username required"}), 400
 
-    user_info = redis_get(f"passkey:{username}")
+    user_info = load_passkey(username)
     if not user_info:
         return jsonify({"error": "No registered passkey"}), 404
 
@@ -111,7 +131,7 @@ def passkey_verify():
     client_data = data.get("client_data")
     signature = data.get("signature")
 
-    user_info = redis_get(f"passkey:{username}")
+    user_info = load_passkey(username)
 
     if not user_info:
         return jsonify({"error": "No registered passkey"}), 404
@@ -201,7 +221,7 @@ def qr_start_login():
 
     username = data.get("username")
 
-    user_info = redis_get(f"passkey:{username}")
+    user_info = load_passkey(username)
     if not user_info:
         return jsonify({"error": "User has no passkey"}), 404
 
@@ -263,4 +283,5 @@ def serve_public(filename):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
